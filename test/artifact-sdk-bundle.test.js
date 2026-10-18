@@ -113,6 +113,7 @@ function bootSdk({
   revisionMarkElements = [],
   htmlAnnotate = null,
   platform = "Linux",
+  sdkOptions = {},
 } = {}) {
   const posted = [];
   const documentListeners = [];
@@ -191,12 +192,13 @@ function bootSdk({
   };
   sandbox.globalThis = sandbox;
 
-  vm.runInNewContext(createSdkJs("abc", 3, "load-token"), sandbox);
+  vm.runInNewContext(createSdkJs("abc", 3, "load-token", sdkOptions), sandbox);
 
   return {
     posted,
     body,
     api: sandbox.window.lavish,
+    windowListenerTypes: () => windowListeners.map((entry) => entry.type),
     // Returns the dispatched event so a test can tell whether the SDK swallowed the click.
     click(target, modifiers = {}) {
       const listener = documentListeners.find((entry) => entry.type === "click");
@@ -371,6 +373,28 @@ test("a requested layout diagnostic publishes even when the result is unchanged"
   assert.equal(diagnostics.length, 2);
   assert.equal(diagnostics[1].artifact_pass_sequence, diagnostics[0].artifact_pass_sequence + 1);
   assert.deepEqual(diagnostics[1].findings, diagnostics[0].findings);
+});
+
+test("a host that turns the passive layout audit off gets no audit until it asks for one", async () => {
+  const sdk = bootSdk({ runAnimationFrames: true, sdkOptions: { layoutAudit: false } });
+
+  await sdk.runAllTimers();
+  assert.equal(sdk.posted.filter((message) => message.type === "lavish:layoutDiagnostics").length, 0);
+  for (const type of ["resize", "animationend", "transitionend"]) {
+    assert.ok(!sdk.windowListenerTypes().includes(type), `no audit re-runs on ${type}`);
+  }
+
+  sdk.sendChromeMessage({ type: "lavish:requestLayoutDiagnostics" });
+  await sdk.runAllTimers();
+  assert.equal(sdk.posted.filter((message) => message.type === "lavish:layoutDiagnostics").length, 1);
+});
+
+test("the passive layout audit stays on by default", async () => {
+  const sdk = bootSdk({ runAnimationFrames: true });
+
+  await sdk.runAllTimers();
+  assert.equal(sdk.posted.filter((message) => message.type === "lavish:layoutDiagnostics").length, 1);
+  assert.ok(sdk.windowListenerTypes().includes("transitionend"));
 });
 
 test("the served SDK echoes the snapshot request id", () => {

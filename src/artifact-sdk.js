@@ -457,7 +457,7 @@ export function deriveAttachmentNoticeState(state = {}) {
  * @param {number} [artifactRevision]
  * @param {string} [artifactLoadToken]
  * @param {string} [sessionKey]
- * @param {{ maxAttachmentCount?: number, maxAttachmentBytes?: number, acceptedImageMime?: string[] }} [options]
+ * @param {{ maxAttachmentCount?: number, maxAttachmentBytes?: number, acceptedImageMime?: string[], layoutAudit?: boolean }} [options]
  */
 export function createArtifactSdk(
   deriveQueueKey,
@@ -2652,10 +2652,15 @@ export function createArtifactSdk(
   setAnnotationMode(annotationMode);
   // Report the page default once; subsequent mode changes belong to the chrome.
   postArtifactMessage("lavish:annotationMode", { enabled: initialAnnotationMode });
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", startLayoutAudit, { once: true });
-  } else {
-    startLayoutAudit();
+  // A host that embeds the SDK in a live page it re-renders constantly can turn the passive audit
+  // off (`layoutAudit: false`): every pass walks the whole document, and it would re-run on each
+  // transition. An explicit `lavish:requestLayoutDiagnostics` still runs one pass.
+  if (options.layoutAudit !== false) {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", startLayoutAudit, { once: true });
+    } else {
+      startLayoutAudit();
+    }
   }
 
   // Mermaid renders asynchronously (and can re-render on theme/resize), so we

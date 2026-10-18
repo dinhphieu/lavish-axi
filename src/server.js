@@ -3164,13 +3164,13 @@ function serializeModuleHelpers(module) {
  * @param {string} key
  * @param {number} [artifactRevision]
  * @param {string} [artifactLoadToken]
- * @param {{ maxAttachmentCount?: number, maxAttachmentBytes?: number, acceptedImageMime?: string[] }} [options]
+ * @param {{ maxAttachmentCount?: number, maxAttachmentBytes?: number, acceptedImageMime?: string[], layoutAudit?: boolean }} [options]
  */
 export function createSdkJs(
   key,
   artifactRevision = 0,
   artifactLoadToken = "",
-  { maxAttachmentCount, maxAttachmentBytes, acceptedImageMime = ACCEPTED_IMAGE_MIME } = {},
+  { maxAttachmentCount, maxAttachmentBytes, acceptedImageMime = ACCEPTED_IMAGE_MIME, layoutAudit } = {},
 ) {
   const mermaidHelperSource = serializeModuleHelpers(mermaidNode);
   const tableHelperSource = serializeModuleHelpers(tableCellHelpers);
@@ -3186,6 +3186,8 @@ export function createSdkJs(
     maxAttachmentCount: Number.isFinite(maxAttachmentCount) ? maxAttachmentCount : undefined,
     maxAttachmentBytes: Number.isFinite(maxAttachmentBytes) ? maxAttachmentBytes : undefined,
     acceptedImageMime: acceptedImageMime.map(String),
+    // Only an explicit `false` turns the passive layout audit off; Lavish's own artifact route keeps it on.
+    layoutAudit: layoutAudit === false ? false : undefined,
   };
   return `(() => {
 const key=${JSON.stringify(key)};
