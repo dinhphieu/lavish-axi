@@ -503,6 +503,10 @@ export function createArtifactSdk(
   const ATTACHMENT_MAX_BYTES =
     Number.isFinite(options.maxAttachmentBytes) && options.maxAttachmentBytes > 0 ? options.maxAttachmentBytes : 0;
   const ATTACHMENT_IMAGE_TYPES = acceptedImageTypes(options.acceptedImageMime);
+  // Whether the SDK schedules layout audits by itself. A host that embeds the SDK in a live page it
+  // re-renders constantly turns it off (`layoutAudit: false`): every pass walks the whole document,
+  // and it would re-run on each transition. Such a host still gets a pass when it asks for one.
+  const passiveLayoutAudit = options.layoutAudit !== false;
   const ATTACHMENT_ACCEPTED_MIME = ATTACHMENT_IMAGE_TYPES.accepted;
   // Minted once per document load and stamped on every upload, so a result the
   // chrome posts back can be tied to the exact document that asked for it. Chip
@@ -1979,7 +1983,9 @@ export function createArtifactSdk(
       }),
       new Promise((resolve) => window.setTimeout(resolve, layoutAuditAnimationMaxWaitMs)),
     ]);
-    if (!settled) {
+    // A finite animation that outlived the cap re-runs the audit once it ends, unless the host
+    // turned the passive audit off: then only the host asks for a pass.
+    if (!settled && passiveLayoutAudit) {
       for (const animation of finite) {
         animation.finished.then(
           () => scheduleLayoutAudit(),
@@ -2652,10 +2658,7 @@ export function createArtifactSdk(
   setAnnotationMode(annotationMode);
   // Report the page default once; subsequent mode changes belong to the chrome.
   postArtifactMessage("lavish:annotationMode", { enabled: initialAnnotationMode });
-  // A host that embeds the SDK in a live page it re-renders constantly can turn the passive audit
-  // off (`layoutAudit: false`): every pass walks the whole document, and it would re-run on each
-  // transition. An explicit `lavish:requestLayoutDiagnostics` still runs one pass.
-  if (options.layoutAudit !== false) {
+  if (passiveLayoutAudit) {
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", startLayoutAudit, { once: true });
     } else {

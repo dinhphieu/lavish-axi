@@ -114,6 +114,7 @@ function bootSdk({
   htmlAnnotate = null,
   platform = "Linux",
   sdkOptions = {},
+  animations = null,
 } = {}) {
   const posted = [];
   const documentListeners = [];
@@ -174,6 +175,7 @@ function bootSdk({
         selector === "script[data-lavish-revisions]" ? revisionsScript : documentQuery(selector),
       querySelectorAll: (selector) => (selector === "[data-lavish-revision]" ? revisionMarkElements : []),
       getSelection: () => selection,
+      ...(animations ? { getAnimations: () => animations } : {}),
     },
   };
   const windowListeners = [];
@@ -387,6 +389,32 @@ test("a host that turns the passive layout audit off gets no audit until it asks
   sdk.sendChromeMessage({ type: "lavish:requestLayoutDiagnostics" });
   await sdk.runAllTimers();
   assert.equal(sdk.posted.filter((message) => message.type === "lavish:layoutDiagnostics").length, 1);
+});
+
+test("with the passive audit off, an animation that outlives a requested pass does not schedule another", async () => {
+  for (const [sdkOptions, expected] of [
+    [{ layoutAudit: false }, 1],
+    [{}, 3],
+  ]) {
+    /** @type {(value?: unknown) => void} */
+    let finish = () => {};
+    const animation = {
+      playState: "running",
+      effect: { target: null, getComputedTiming: () => ({ endTime: 10_000 }) },
+      finished: new Promise((resolve) => {
+        finish = resolve;
+      }),
+    };
+    const sdk = bootSdk({ runAnimationFrames: true, sdkOptions, animations: [animation] });
+    await sdk.runAllTimers();
+    sdk.sendChromeMessage({ type: "lavish:requestLayoutDiagnostics" });
+    await sdk.runAllTimers();
+    animation.playState = "finished";
+    finish();
+    await sdk.runAllTimers();
+    const passes = sdk.posted.filter((message) => message.type === "lavish:layoutDiagnostics").length;
+    assert.equal(passes, expected, `layoutAudit ${JSON.stringify(sdkOptions)}`);
+  }
 });
 
 test("the passive layout audit stays on by default", async () => {
